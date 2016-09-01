@@ -48,7 +48,7 @@ URL_GOOGLE_SDK_SITE + [apply NS_LATEST_VERSION to Java format string URL_FILENAM
 Retrieve Repository from URL
 
 Generate XSD URL:
-"https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/java/com/android/sdklib/repository/" + NODE_SDK_REPOSITORY + "-" + NS_LATEST_VERSION
+"https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/java/com/android/sdklib/repository/" + NODE_SDK_REPOSITORY + "-" + NS_LATEST_VERSION + ".xsd"
 
 Retrieve XSD
 
