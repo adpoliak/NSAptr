@@ -1,0 +1,93 @@
+https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/java/com/android/sdklib/repository/SdkRepoConstants.java
+052    public static final String URL_GOOGLE_SDK_SITE =
+053        "https://dl.google.com/android/repository/";                        //$NON-NLS-1$
+
+036    public static final int NS_LATEST_VERSION = 11;
+
+061    /**
+062     * The pattern name looked by {@link SdkSource} when trying to load
+063     * an sdk-repository XML that is specific to a given XSD revision.
+064     * <p/>
+065     * This must be used with {@link String#format(String, Object...)} with
+066     * one integer parameter between 1 and {@link #NS_LATEST_VERSION}.
+067     */
+068    public static final String URL_FILENAME_PATTERN = "repository-%1$d.xml";      //$NON-NLS-1$
+
+071    private static final String NS_BASE =
+072        "http://schemas.android.com/sdk/android/repository/";                   //$NON-NLS-1$
+
+078    public static final String NS_PATTERN = NS_BASE + "([0-9]+)";          //$NON-NLS-1$
+
+081    public static final String NS_URI = getSchemaUri(NS_LATEST_VERSION);
+
+147    public static String getSchemaUri(int version) {
+148        return String.format(NS_BASE + "%d", version);           //$NON-NLS-1$
+149    }
+
+084    public static final String NODE_SDK_REPOSITORY = "sdk-repository";        //$NON-NLS-1$
+
+108    public static final String NODE_PLATFORM_TOOL   = "platform-tool";        //$NON-NLS-1$
+
+XSDs located at https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/java/com/android/sdklib/repository/ (included in "${SDKHOME}/tools/lib/sdklib.jar")
+
+Process:
+
+Retrieve SdkRepoConstants.java and parse out the following:
+URL_GOOGLE_SDK_SITE
+NS_LATEST_VERSION
+URL_FILANEME_PATTERN
+NS_BASE
+NS_PATTERN
+NS_URI
+NODE_SDK_REPOSITORY
+NODE_PLATFORM_TOOL
+
+Generate Repository URL:
+URL_GOOGLE_SDK_SITE + [apply NS_LATEST_VERSION to Java format string URL_FILENAME_PATTERN]
+
+Retrieve Repository from URL
+
+Generate XSD URL:
+"https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/java/com/android/sdklib/repository/" + NODE_SDK_REPOSITORY + "-" + NS_LATEST_VERSION
+
+Retrieve XSD
+
+Verify Repository root element type is NODE_SDK_REPOSITORY
+
+Verify Repository is validated by XSD
+
+detect OS
+
+in each element of type NODE_PLATFORM_TOOL:
+    build version string from "revision/major" + "revision/minor" + "revision/micro" child element data
+    add version string to list
+    add "uses-license" reference name to license dict keyed to version
+    add "archives/archive/size", "archives/archive/checksum", and "archives/archive/url" to download dict keyed to version for the "archives/archive" child element that has a "archives/archive/host-os" child that matches detected OS
+
+filter version list based on download dict having a key named as the list item
+
+print out remaining version list members and ask user to choose one, select automatically, or abort, unless settings contain a valid option
+
+get content of "/license" element with ID license[version]
+
+Prompt user to accept license terms or abort, unless settings state that user has already accepted this license
+
+If user does not accept, exit
+
+Retrieve URL_GOOGLE_SDK_SITE + "/" + downloads[version][url]
+
+Assert retrieved data length is download[version][size] bytes long
+
+Assert retrieved data download[version][checksum][type] checksum matches download[version][checksum][value]
+
+Ask user for installation directory
+
+Validate write access to installation directory
+
+Verify installation directory empty, ask permission to overwrite files if necessary
+
+Extract retrieved data to installation directory
+
+Ask user if they would like to save settings for future runs
+
+exit
