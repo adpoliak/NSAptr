@@ -28,6 +28,8 @@ https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/ja
 
 108    public static final String NODE_PLATFORM_TOOL   = "platform-tool";        //$NON-NLS-1$
 
+To retrieve from Gitiles, per [https://code.google.com/p/gitiles/issues/detail?id=7], add "?format=TEXT" to the URL, then perform Base64 decoding on the output.
+
 XSDs located at https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/java/com/android/sdklib/repository/ (included in "${SDKHOME}/tools/lib/sdklib.jar")
 
 Process:
@@ -50,7 +52,7 @@ Retrieve Repository from URL
 Generate XSD URL:
 "https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/java/com/android/sdklib/repository/" + NODE_SDK_REPOSITORY + "-" + NS_LATEST_VERSION + ".xsd"
 
-Retrieve XSD
+Retrieve XSD, following Gitiles raw content process
 
 Verify Repository root element type is NODE_SDK_REPOSITORY
 
