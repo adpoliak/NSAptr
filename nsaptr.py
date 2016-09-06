@@ -18,7 +18,7 @@ Copyright 2016 adpoliak
 from base64 import b64decode, b64encode
 from http.cookiejar import CookieJar
 from pprint import pprint
-from urllib import request
+from urllib import request, parse
 import re
 
 
@@ -28,19 +28,56 @@ def pythonify_java_format_string(match_obj):
     :param match_obj: match object generated as part of call to re.sub()
     :return: Java format string converted to python '{}'.format() syntax
     """
-    fd = {'arg_integer': '', 'conversion': '!s', 'fs': {'fill': '', 'align': '', 'sign': '', 'type_prefix': '',
-                                                        'zero_pad': '', 'width': '', 'comma_sep': '', 'precision': '',
-                                                        'type': '',
-                                                        }}
+    fd = {'arg_integer': '', 'conversion': '', 'fs': {'fill': '', 'align': '', 'sign': '', 'type_prefix': '',
+                                                      'zero_pad': '', 'width': '', 'comma_sep': '', 'precision': '',
+                                                      'type': '',
+                                                      }}
 
     captured = match_obj.groupdict()
 
-    # Java Format String Indexes are Base 1
-    # Python's are Base 0
-    # So we have to deal with it...
     index = captured.get('index', None)
     if index is not None:
+        # Java Format String Indexes are Base 1
+        # Python's are Base 0
+        # So we have to deal with it...
         fd['arg_integer'] = str(int(index[:-1]) - 1)
+
+    flags = captured.get('flags', None)
+    if flags is not None:
+        # Lack of alignment flag in Java means to do right-alignment
+        fd['fs']['align'] = '<' if '-' in flags else '>'
+        if '+' in flags:
+            fd['fs']['sign'] = '+'
+        elif ' ' in flags:
+            fd['fs']['sign'] = ' '
+        else:
+            # Java doesn't do distinction between default left- and right-aligned fields, so we force Java's default
+            fd['fs']['sign'] = '-'
+        if '#' in flags:
+            fd['fs']['type_prefix'] = '#'
+        if '0' in flags:
+            fd['fs']['fill'] = '0'
+            fd['fs']['align'] = '='
+        if ',' in flags:
+            fd['fs']['comma_sep'] = ','
+        if '(' in flags:
+            raise NotImplementedError('"(" Formatting flag not natively supported in Python.')
+
+    width = captured.get('width', None)
+    if width is not None:
+        # Zero padding was taken care of in flags, make sure it is stripped out here
+        fd['fs']['width'] = str(int(width))
+
+    precision = captured.get('precision', None)
+    if precision is not None:
+        fd['fs']['precision'] = precision
+
+    conversion = captured.get('conversion', None)
+    if conversion is not None:
+        if conversion in list('sScCdoXxeEfgG'):
+            fd['fs']['type'] = conversion
+        else:
+            raise NotImplementedError('"{}" Conversion not natively supported in Python.'.format(conversion))
 
     ret = (
         '{' +
@@ -84,7 +121,6 @@ with opener.open(req) as conn:
     encoded_data = b64decode(byte_stream)
     decoded_data = encoded_data.decode('utf-8')
 
-
 rxstr = r''
 sf = r'static[ \t]+final[ \t]+'
 psf = r'^[ \t]*public[ \t]+' + sf
@@ -123,25 +159,56 @@ if b64encode(settings['GETSCHEMAURI'].encode('utf-8')) == (b'cHVibGljIHN0YXRpYyB
                                                            b'9uKSB7CiAgICAgICAgcmV0dXJuIFN0cmluZy5mb3JtYXQoTlNfQkFTRSAr'
                                                            b'ICIlZCIsIHZlcnNpb24pOyAgICAgICAgICAgLy8kTk9OLU5MUy0xJAogIC'
                                                            b'AgfQ=='):
-    del (settings['GETSCHEMAURI'])
-    settings['XMLNS'] = settings['NS_BASE'] + settings['NS_LATEST_VERSION']
-    del (settings['NS_BASE'])
+    if b64encode(settings['NS_URI'].encode('utf-8')) == b'Z2V0U2NoZW1hVXJpKE5TX0xBVEVTVF9WRVJTSU9OKQ==':
+        del (settings['GETSCHEMAURI'])
+        del (settings['NS_URI'])
+        settings['XMLNS'] = settings['NS_BASE'] + settings['NS_LATEST_VERSION']
+        del (settings['NS_BASE'])
 
-"""
-definition of Java Format String from https://docs.oracle.com/javase/7/docs/api/java/util/Formatter.html
-"""
+# definition of Java Format String from https://docs.oracle.com/javase/7/docs/api/java/util/Formatter.html
 jf = re.compile(
     r'%'
     r'(?P<index>[0-9]+\$)?'
-    r'(?P<flags>[-#+ 0,(])?'
+    r'(?P<flags>[-#+ 0,(]+)?'
     r'(?P<width>[0-9]+)?'
-    r'(?P<precision>[0-9]+)?'
+    r'(?P<precision>\.[0-9]+)?'
     r'(?P<conversion>[bBhHsScCdoxXeEfgGaA%n]|[tT][HIklMSLNpzZsQBbhAaCYyjmdeRTrDFc)])',
-    re.MULTILINE + re.VERBOSE + re.UNICODE + re.DOTALL)
+    re.MULTILINE + re.VERBOSE + re.UNICODE + re.DOTALL
+)
 
 settings['URL_FILENAME_PATTERN'], num_replacements = jf.subn(pythonify_java_format_string,
                                                              settings['URL_FILENAME_PATTERN'])
+settings['REPO_URL'] = '{}{}'.format(
+    settings['URL_GOOGLE_SDK_SITE'],
+    settings['URL_FILENAME_PATTERN'].format(int(settings['NS_LATEST_VERSION']))
+)
+del (settings['URL_FILENAME_PATTERN'])
+settings['XSD_URL'] = '{}/{}-{}.xsd?format=TEXT'.format(
+    'https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/java/com/android/sdklib/repository',
+    settings['NODE_SDK_REPOSITORY'],
+    settings['NS_LATEST_VERSION']
+)
+del (settings['NS_LATEST_VERSION'])
 
 pprint(settings)
 
-raise NotImplementedError('not done yet, sorry!')
+req.full_url = settings['REPO_URL']
+result = parse.urlparse(settings['REPO_URL'], allow_fragments=True)
+req.host = result.netloc
+req.fragment = result.fragment
+req.origin_req_host = req.host
+req.unredirected_hdrs = dict()
+with opener.open(req) as conn:
+    byte_stream = conn.read()
+    repo_data = byte_stream.decode('utf-8')
+
+req.full_url = settings['XSD_URL']
+result = parse.urlparse(settings['XSD_URL'], allow_fragments=True)
+req.host = result.netloc
+req.fragment = result.fragment
+req.origin_req_host = req.host
+req.unredirected_hdrs = dict()
+with opener.open(req) as conn:
+    byte_stream = conn.read()
+    encoded_data = b64decode(byte_stream)
+    xsd_data = encoded_data.decode('utf-8')
