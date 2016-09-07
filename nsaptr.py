@@ -17,20 +17,87 @@ Copyright 2016 adpoliak
 """
 from base64 import b64decode, b64encode
 from distutils.version import LooseVersion
+from hashlib import sha1
 from http.cookiejar import CookieJar
+from io import BytesIO
 from platform import system
 from pyxb.binding import generate
 from textwrap import fill
+from tkinter.filedialog import askdirectory
 from types import ModuleType
 from urllib import request, parse
+from zipfile import ZipFile
+import logging
 import re
+import tkinter as tk
+import tkinter.ttk
+import typing
 
 
-def pythonify_java_format_string(match_obj):
+class LicenseDialog(tk.Toplevel):
+    def accept_callback(self, event=None):
+        self.return_code = 'accept'
+        self.destroy()
+
+    def cancel_callback(self, event=None):
+        self.return_code = 'cancel'
+        self.destroy()
+
+    def __init__(self, master, license_heading, license_body, *args, **kwargs):
+        tk.Toplevel.__init__(self, master, *args, **kwargs)
+        self.minsize(640, 480)
+        self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=1)
+        self.columnconfigure(2, weight=1)
+        self.columnconfigure(3, weight=1)
+        self.columnconfigure(4, weight=0)
+        self.rowconfigure(0, weight=1)
+        self.rowconfigure(1, weight=0)
+        self.rowconfigure(2, weight=0)
+        self.transient(master)
+        self.master = master
+        self.protocol('WM_DELETE_WINDOW', self.cancel_callback)
+        self.bind("<Escape>", self.cancel_callback)
+        self.title('License Agreement')
+        self.return_code = None
+        self.grid()
+        self._license_text = tk.Text(self, padx=1, pady=1, state=tk.NORMAL, takefocus=True, wrap=tk.WORD)
+        self._license_text.grid(column=0, row=0, columnspan=4, padx=1, pady=1, ipadx=1, ipady=1,
+                                sticky=tk.N+tk.E+tk.W+tk.S)
+        self._license_text.insert(tk.INSERT, license_heading + "\n\n")
+        self._license_text.insert(tk.INSERT, license_body)
+        self._license_text.config(state=tk.DISABLED)
+        self._initial_focus = self._license_text
+        self._license_vscroll = tk.ttk.Scrollbar(self, command=self._license_text.yview, orient=tk.VERTICAL)
+        self._license_vscroll.grid(column=4, row=0, rowspan=2, padx=1, pady=1, ipadx=1, ipady=1,
+                                   sticky=tk.N+tk.E+tk.W+tk.S)
+        self._license_text.config(yscrollcommand=self._license_vscroll.set)
+        self._license_hscroll = tk.ttk.Scrollbar(self, command=self._license_text.xview, orient=tk.HORIZONTAL)
+        self._license_hscroll.grid(column=0, row=1, columnspan=4, padx=1, pady=1, ipadx=1, ipady=1,
+                                   sticky=tk.N+tk.E+tk.W+tk.S)
+        self._license_text.config(xscrollcommand=self._license_hscroll.set)
+        self._accept_button = tk.ttk.Button(self, command=self.accept_callback, takefocus=True,
+                                            text='I Accept this License Agreement', underline=2)
+        self._accept_button.grid(column=0, row=2, columnspan=2, padx=1, pady=1, ipadx=1, ipady=1,
+                                 sticky=tk.N+tk.E+tk.W+tk.S)
+        self._cancel_button = tk.ttk.Button(self, command=self.cancel_callback, takefocus=True,
+                                            default=tk.ACTIVE, text='I DON\'T Accept this License Agreement',
+                                            underline=2)
+        self._cancel_button.grid(column=2, row=2, columnspan=2, padx=1, pady=1, ipadx=1, ipady=1,
+                                 sticky=tk.N+tk.E+tk.W+tk.S)
+        self.grab_set()
+        if not self._initial_focus:
+            self._initial_focus = self
+        self._initial_focus.focus_set()
+        self.wait_window(self)
+
+
+def pythonify_java_format_string(match_obj: typing.re.Match) -> str:
     """
-    Adapted from https://docs.python.org/3.1/library/string.html#format-string-syntax
+    :rtype: str
     :param match_obj: match object generated as part of call to re.sub()
     :return: Java format string converted to python '{}'.format() syntax
+    Adapted from https://docs.python.org/3.1/library/string.html#format-string-syntax
     """
     fd = {'arg_integer': '', 'conversion': '', 'fs': {'fill': '', 'align': '', 'sign': '', 'type_prefix': '',
                                                       'zero_pad': '', 'width': '', 'comma_sep': '', 'precision': '',
@@ -102,34 +169,52 @@ def pythonify_java_format_string(match_obj):
     return ret
 
 
+def reset_request(request_obj: request.Request,
+                  new_uri: str,
+                  new_method: str=None,
+                  new_data: typing.Optional[typing.ByteString]=b'`^NO CHANGE^`') -> None:
+    """
+    Resets a urllib.request.Request instance URI
+    Default value of new_data chosen because it contains characters that are not allowed per RFC 3986
+    :param request_obj: urllib.request.Request - The object being reset
+    :param new_uri: str - String containing the new URI
+    :param new_method: str - String containing the new request method
+    :param new_data: byte string - data to be sent alongside the request
+    :rtype: None
+    """
+    if new_method is not None:
+        request_obj.method = new_method
+    if new_data != b'`^NO CHANGE^`':
+        request_obj.data = new_data
+    request_obj.full_url = new_uri
+    result = parse.urlparse(new_uri, allow_fragments=True)
+    request_obj.host = result.netloc
+    request_obj.fragment = result.fragment
+    request_obj.origin_req_host = request_obj.host
+    request_obj.unredirected_hdrs = dict()
+
 rdh = request.HTTPRedirectHandler()
 rdh.max_repeats = 999
 rdh.max_redirections = 999
 
 cj = CookieJar()
 cjh = request.HTTPCookieProcessor(cj)
-del cj
-del CookieJar
 
 opener = request.build_opener(
     rdh,
     cjh
 )
-del rdh
-del cjh
 
 req = request.Request(
     url='https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/java/com/android/sdklib/'
         'repository/SdkRepoConstants.java?format=TEXT',
     method='GET',
 )
-del request
 
 with opener.open(req) as conn:
     byte_stream = conn.read()
     raw_data = b64decode(byte_stream)
     sdk_repo_source_data = raw_data.decode('utf-8')
-    del raw_data
 
 rxstr = r''
 sf = r'static[ \t]+final[ \t]+'
@@ -157,20 +242,10 @@ rxstr += psfs + r'NODE_PLATFORM_TOOL[ \t\r\n]*=[ \t\r\n]*[\'"](?P<NODE_PLATFORM_
 # GETSCHEMAURI Variable
 rxstr += r'^[ \t]*(?P<GETSCHEMAURI>public[ \t]+static[ \t]+string[ \t]+getSchemaUri\([^)]*\)[ \t]*\{.*?\})[ \t\r\n]*$'
 rx = re.compile(rxstr, re.MULTILINE + re.IGNORECASE + re.VERBOSE + re.UNICODE + re.DOTALL)
-del rxstr
-del sf
-del psf
-del psfs
-del rsfs
-del endl
-del nn1
 
 settings = dict()
 for match in rx.finditer(sdk_repo_source_data):
     settings.update({key: val for key, val in match.groupdict().items() if val is not None})
-del match
-del rx
-del sdk_repo_source_data
 
 if settings['NS_PATTERN'].startswith('NS_BASE + '):
     settings['NS_PATTERN'] = settings['NS_BASE'] + settings['NS_PATTERN'][10:].replace('"', '')
@@ -180,11 +255,7 @@ if b64encode(settings['GETSCHEMAURI'].encode('utf-8')) == (b'cHVibGljIHN0YXRpYyB
                                                            b'ICIlZCIsIHZlcnNpb24pOyAgICAgICAgICAgLy8kTk9OLU5MUy0xJAogIC'
                                                            b'AgfQ=='):
     if b64encode(settings['NS_URI'].encode('utf-8')) == b'Z2V0U2NoZW1hVXJpKE5TX0xBVEVTVF9WRVJTSU9OKQ==':
-        del settings['GETSCHEMAURI']
-        del settings['NS_URI']
         settings['XMLNS'] = settings['NS_BASE'] + settings['NS_LATEST_VERSION']
-        del settings['NS_BASE']
-del b64encode
 
 # definition of Java Format String from https://docs.oracle.com/javase/7/docs/api/java/util/Formatter.html
 jf = re.compile(
@@ -199,69 +270,41 @@ jf = re.compile(
 
 settings['URL_FILENAME_PATTERN'], num_replacements = jf.subn(pythonify_java_format_string,
                                                              settings['URL_FILENAME_PATTERN'])
-del jf
-del num_replacements
-del pythonify_java_format_string
 
 settings['REPO_URL'] = '{}{}'.format(
     settings['URL_GOOGLE_SDK_SITE'],
     settings['URL_FILENAME_PATTERN'].format(int(settings['NS_LATEST_VERSION']))
 )
-del settings['URL_FILENAME_PATTERN']
 
 settings['XSD_URL'] = '{}/{}-{}.xsd?format=TEXT'.format(
     'https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/java/com/android/sdklib/repository',
     settings['NODE_SDK_REPOSITORY'],
     settings['NS_LATEST_VERSION']
 )
-del settings['NS_LATEST_VERSION']
 
-req.full_url = settings['REPO_URL']
-result = parse.urlparse(settings['REPO_URL'], allow_fragments=True)
-req.host = result.netloc
-req.fragment = result.fragment
-req.origin_req_host = req.host
-req.unredirected_hdrs = dict()
+reset_request(req, settings['REPO_URL'])
 with opener.open(req) as conn:
     byte_stream = conn.read()
     repo_data = byte_stream.decode('utf-8')
 
-req.full_url = settings['XSD_URL']
-result = parse.urlparse(settings['XSD_URL'], allow_fragments=True)
-req.host = result.netloc
-req.fragment = result.fragment
-req.origin_req_host = req.host
-req.unredirected_hdrs = dict()
+reset_request(req, settings['XSD_URL'])
 with opener.open(req) as conn:
     byte_stream = conn.read()
     raw_data = b64decode(byte_stream)
     xsd_data = raw_data.decode('utf-8')
-    del raw_data
 assert re.search(settings['NS_PATTERN'], xsd_data)
-del re
-del b64decode
-del settings['NS_PATTERN']
 
-generate._log.disabled = 1
+logging.disable(logging.CRITICAL)
 repository_xsd_code = generate.GeneratePython(schema_text=xsd_data)
-del xsd_data
+
 repository_module_code = compile(source=repository_xsd_code, filename=settings['XSD_URL'], mode='exec')
-del repository_xsd_code
 repository_module = ModuleType('repository_module')
 exec(repository_module_code, repository_module.__dict__)
-del repository_module_code
-del settings['XSD_URL']
-del generate
-del ModuleType
 
 repository = repository_module.CreateFromDocument(xml_text=repo_data, location_base=settings['REPO_URL'])
-del repository_module
-del repo_data
-del settings['REPO_URL']
-assert len([y for x, y in repository._namespaceContext().inScopeNamespaces().items() if y._Namespace__uri == settings['XMLNS']]) > 0
-assert repository._element().name().localName() == settings['NODE_SDK_REPOSITORY']
-del settings['NODE_SDK_REPOSITORY']
-del settings['XMLNS']
+repository_dom = repository.toDOM()
+assert repository_dom.documentElement.namespaceURI == settings['XMLNS']
+assert repository_dom.documentElement.localName == settings['NODE_SDK_REPOSITORY']
 
 platforms = {
     'Linux': 'linux',
@@ -269,7 +312,6 @@ platforms = {
     'Darwin': 'macosx',
 }
 
-licenses = dict()
 archives = dict()
 # TODO: get previous installation info from configuration to show in later steps
 
@@ -277,9 +319,10 @@ for candidate in getattr(repository, settings['NODE_PLATFORM_TOOL'].replace('-',
     candidate_version = LooseVersion('{}.{}.{}'.format(candidate.revision.major,
                                                        candidate.revision.minor,
                                                        candidate.revision.micro)).vstring
-    licenses[candidate_version] = candidate.uses_license.ref
+    candidate_license = candidate.uses_license.ref
     for archive in candidate.archives.archive:
         if archive.host_os == platforms[system()]:
+            assert archive.checksum.type in ['sha1', ]
             archives[candidate_version] = {
                 'size': archive.size,
                 'checksum': {
@@ -287,15 +330,9 @@ for candidate in getattr(repository, settings['NODE_PLATFORM_TOOL'].replace('-',
                     'value': archive.checksum.value(),
                 },
                 'url': archive.url,
+                'license': candidate_license,
             }
             break
-    if archives.get(candidate_version, None) is None:
-        del licenses[candidate_version]
-del settings['NODE_PLATFORM_TOOL']
-del platforms
-del candidate
-del candidate_version
-del archive
 
 print('Found Installation Candidates:')
 print("\n".join(sorted(archives.keys(), key=LooseVersion)))
@@ -307,38 +344,55 @@ elif len(archives) == 0:
     raise FileNotFoundError('No Available Versions')
 else:
     settings['SELECTED_VERSION'] = list(archives.keys())[0]
-del LooseVersion
-
-print('Android Platform Tools v{} for {} is distributed under the "{}" license.'.format(settings['SELECTED_VERSION'],
-                                                                                        system(),
-                                                                                        licenses[settings['SELECTED_VERSION']]))
-del system
-print('Please read the following license:')
-for prod_license in [x for x in repository.license if x.id == licenses[settings['SELECTED_VERSION']]]:
-    print(fill(prod_license.value(), replace_whitespace=False,  drop_whitespace=False, width=80))
-del fill
-del prod_license
-del licenses
-#license_accepted = input('Please type "I ACCEPT THIS LICENSE" to continue []:')
-#if license_accepted != 'I ACCEPT THIS LICENSE':
-#    raise PermissionError('License Not Accepted')
 
 archive_data = archives[settings['SELECTED_VERSION']]
-del archives
 
-# TODO: Retrieve and verify archive
-del byte_stream
-del conn
-del req
-del opener
-del parse
-del repository
-del result
+has_window_manager = True
+license_accepted = True
+for prod_license in [x for x in repository.license if x.id == archive_data['license']]:
+    license_accepted = False
+    if has_window_manager:
+        root = tk.Tk()
+        root.withdraw()
+        d = LicenseDialog(root, license_heading=('Android Platform Tools v{} for {} is distributed '
+                                                 'under the "{}" license:').format(settings['SELECTED_VERSION'],
+                                                                                   system(),
+                                                                                   archive_data['license']),
+                          license_body=prod_license.value())
+        license_accepted = d.return_code == 'accept'
+    else:
+        print(('Android Platform Tools v{} for {} is distributed '
+               'under the "{}" license:').format(settings['SELECTED_VERSION'],
+                                                 system(),
+                                                 archive_data['license']))
+        print('Please read the following license:')
+        print(fill(prod_license.value(), replace_whitespace=False, drop_whitespace=False, width=80))
+        license_accepted = input('Please type "I ACCEPT THIS LICENSE" to continue []:') == 'I ACCEPT THIS LICENSE'
+    break
+if not license_accepted:
+    raise PermissionError('License Not Accepted')
 
-# TODO: deploy archive
-del archive_data
+if not archive_data['url'].lower().startswith('http'):
+    archive_data['url'] = settings['URL_GOOGLE_SDK_SITE'] + archive_data['url']
+
+reset_request(req, archive_data['url'])
+with opener.open(req) as conn:
+    byte_stream = conn.read()
+    assert len(byte_stream) == archive_data['size']
+    sha1_checker = sha1()
+    sha1_checker.update(byte_stream)
+    assert sha1_checker.hexdigest() == archive_data['checksum']['value']
+    archive_fileobj = BytesIO(byte_stream)
+
+assert archive_data['url'].lower().endswith('.zip')
+extract_base_directory = askdirectory(title='Choose Output Base Directory', mustexist=True)
+assert extract_base_directory != ''
+archive_obj = ZipFile(archive_fileobj)
+archive_obj.extractall(path=extract_base_directory)
+# TODO: Replace line above with code that sets permissions on executables as they extract
 
 # TODO: save settings
 
 # FINAL CLEANUPS
+
 raise NotImplementedError('not done yet!')
