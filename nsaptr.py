@@ -16,8 +16,12 @@ Copyright 2016 adpoliak
    limitations under the License.
 """
 from base64 import b64decode, b64encode
+from distutils.version import LooseVersion
 from http.cookiejar import CookieJar
-from pprint import pprint
+from platform import system
+from pyxb.binding import generate
+from textwrap import fill
+from types import ModuleType
 from urllib import request, parse
 import re
 
@@ -104,22 +108,28 @@ rdh.max_redirections = 999
 
 cj = CookieJar()
 cjh = request.HTTPCookieProcessor(cj)
+del cj
+del CookieJar
 
 opener = request.build_opener(
     rdh,
     cjh
 )
+del rdh
+del cjh
 
 req = request.Request(
     url='https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/java/com/android/sdklib/'
         'repository/SdkRepoConstants.java?format=TEXT',
     method='GET',
 )
+del request
 
 with opener.open(req) as conn:
     byte_stream = conn.read()
-    encoded_data = b64decode(byte_stream)
-    decoded_data = encoded_data.decode('utf-8')
+    raw_data = b64decode(byte_stream)
+    sdk_repo_source_data = raw_data.decode('utf-8')
+    del raw_data
 
 rxstr = r''
 sf = r'static[ \t]+final[ \t]+'
@@ -147,10 +157,20 @@ rxstr += psfs + r'NODE_PLATFORM_TOOL[ \t\r\n]*=[ \t\r\n]*[\'"](?P<NODE_PLATFORM_
 # GETSCHEMAURI Variable
 rxstr += r'^[ \t]*(?P<GETSCHEMAURI>public[ \t]+static[ \t]+string[ \t]+getSchemaUri\([^)]*\)[ \t]*\{.*?\})[ \t\r\n]*$'
 rx = re.compile(rxstr, re.MULTILINE + re.IGNORECASE + re.VERBOSE + re.UNICODE + re.DOTALL)
+del rxstr
+del sf
+del psf
+del psfs
+del rsfs
+del endl
+del nn1
 
 settings = dict()
-for match in rx.finditer(decoded_data):
+for match in rx.finditer(sdk_repo_source_data):
     settings.update({key: val for key, val in match.groupdict().items() if val is not None})
+del match
+del rx
+del sdk_repo_source_data
 
 if settings['NS_PATTERN'].startswith('NS_BASE + '):
     settings['NS_PATTERN'] = settings['NS_BASE'] + settings['NS_PATTERN'][10:].replace('"', '')
@@ -160,10 +180,11 @@ if b64encode(settings['GETSCHEMAURI'].encode('utf-8')) == (b'cHVibGljIHN0YXRpYyB
                                                            b'ICIlZCIsIHZlcnNpb24pOyAgICAgICAgICAgLy8kTk9OLU5MUy0xJAogIC'
                                                            b'AgfQ=='):
     if b64encode(settings['NS_URI'].encode('utf-8')) == b'Z2V0U2NoZW1hVXJpKE5TX0xBVEVTVF9WRVJTSU9OKQ==':
-        del (settings['GETSCHEMAURI'])
-        del (settings['NS_URI'])
+        del settings['GETSCHEMAURI']
+        del settings['NS_URI']
         settings['XMLNS'] = settings['NS_BASE'] + settings['NS_LATEST_VERSION']
-        del (settings['NS_BASE'])
+        del settings['NS_BASE']
+del b64encode
 
 # definition of Java Format String from https://docs.oracle.com/javase/7/docs/api/java/util/Formatter.html
 jf = re.compile(
@@ -178,19 +199,22 @@ jf = re.compile(
 
 settings['URL_FILENAME_PATTERN'], num_replacements = jf.subn(pythonify_java_format_string,
                                                              settings['URL_FILENAME_PATTERN'])
+del jf
+del num_replacements
+del pythonify_java_format_string
+
 settings['REPO_URL'] = '{}{}'.format(
     settings['URL_GOOGLE_SDK_SITE'],
     settings['URL_FILENAME_PATTERN'].format(int(settings['NS_LATEST_VERSION']))
 )
-del (settings['URL_FILENAME_PATTERN'])
+del settings['URL_FILENAME_PATTERN']
+
 settings['XSD_URL'] = '{}/{}-{}.xsd?format=TEXT'.format(
     'https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/java/com/android/sdklib/repository',
     settings['NODE_SDK_REPOSITORY'],
     settings['NS_LATEST_VERSION']
 )
-del (settings['NS_LATEST_VERSION'])
-
-pprint(settings)
+del settings['NS_LATEST_VERSION']
 
 req.full_url = settings['REPO_URL']
 result = parse.urlparse(settings['REPO_URL'], allow_fragments=True)
@@ -210,5 +234,111 @@ req.origin_req_host = req.host
 req.unredirected_hdrs = dict()
 with opener.open(req) as conn:
     byte_stream = conn.read()
-    encoded_data = b64decode(byte_stream)
-    xsd_data = encoded_data.decode('utf-8')
+    raw_data = b64decode(byte_stream)
+    xsd_data = raw_data.decode('utf-8')
+    del raw_data
+assert re.search(settings['NS_PATTERN'], xsd_data)
+del re
+del b64decode
+del settings['NS_PATTERN']
+
+generate._log.disabled = 1
+repository_xsd_code = generate.GeneratePython(schema_text=xsd_data)
+del xsd_data
+repository_module_code = compile(source=repository_xsd_code, filename=settings['XSD_URL'], mode='exec')
+del repository_xsd_code
+repository_module = ModuleType('repository_module')
+exec(repository_module_code, repository_module.__dict__)
+del repository_module_code
+del settings['XSD_URL']
+del generate
+del ModuleType
+
+repository = repository_module.CreateFromDocument(xml_text=repo_data, location_base=settings['REPO_URL'])
+del repository_module
+del repo_data
+del settings['REPO_URL']
+assert len([y for x, y in repository._namespaceContext().inScopeNamespaces().items() if y._Namespace__uri == settings['XMLNS']]) > 0
+assert repository._element().name().localName() == settings['NODE_SDK_REPOSITORY']
+del settings['NODE_SDK_REPOSITORY']
+del settings['XMLNS']
+
+platforms = {
+    'Linux': 'linux',
+    'Windows': 'windows',
+    'Darwin': 'macosx',
+}
+
+licenses = dict()
+archives = dict()
+# TODO: get previous installation info from configuration to show in later steps
+
+for candidate in getattr(repository, settings['NODE_PLATFORM_TOOL'].replace('-', '_')):
+    candidate_version = LooseVersion('{}.{}.{}'.format(candidate.revision.major,
+                                                       candidate.revision.minor,
+                                                       candidate.revision.micro)).vstring
+    licenses[candidate_version] = candidate.uses_license.ref
+    for archive in candidate.archives.archive:
+        if archive.host_os == platforms[system()]:
+            archives[candidate_version] = {
+                'size': archive.size,
+                'checksum': {
+                    'type': archive.checksum.type,
+                    'value': archive.checksum.value(),
+                },
+                'url': archive.url,
+            }
+            break
+    if archives.get(candidate_version, None) is None:
+        del licenses[candidate_version]
+del settings['NODE_PLATFORM_TOOL']
+del platforms
+del candidate
+del candidate_version
+del archive
+
+print('Found Installation Candidates:')
+print("\n".join(sorted(archives.keys(), key=LooseVersion)))
+
+if len(archives) > 1:
+    # TODO: prompt user for which version to deploy
+    raise NotImplementedError('Version Selection Not Implemented')
+elif len(archives) == 0:
+    raise FileNotFoundError('No Available Versions')
+else:
+    settings['SELECTED_VERSION'] = list(archives.keys())[0]
+del LooseVersion
+
+print('Android Platform Tools v{} for {} is distributed under the "{}" license.'.format(settings['SELECTED_VERSION'],
+                                                                                        system(),
+                                                                                        licenses[settings['SELECTED_VERSION']]))
+del system
+print('Please read the following license:')
+for prod_license in [x for x in repository.license if x.id == licenses[settings['SELECTED_VERSION']]]:
+    print(fill(prod_license.value(), replace_whitespace=False,  drop_whitespace=False, width=80))
+del fill
+del prod_license
+del licenses
+#license_accepted = input('Please type "I ACCEPT THIS LICENSE" to continue []:')
+#if license_accepted != 'I ACCEPT THIS LICENSE':
+#    raise PermissionError('License Not Accepted')
+
+archive_data = archives[settings['SELECTED_VERSION']]
+del archives
+
+# TODO: Retrieve and verify archive
+del byte_stream
+del conn
+del req
+del opener
+del parse
+del repository
+del result
+
+# TODO: deploy archive
+del archive_data
+
+# TODO: save settings
+
+# FINAL CLEANUPS
+raise NotImplementedError('not done yet!')
