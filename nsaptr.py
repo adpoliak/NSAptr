@@ -359,7 +359,6 @@ platforms = {
 }
 
 archives = dict()
-# TODO: get previous installation info from configuration to show in later steps
 
 for candidate in getattr(repository, settings['NODE_PLATFORM_TOOL'].replace('-', '_')):
     candidate_version = LooseVersion('{}.{}.{}'.format(candidate.revision.major,
