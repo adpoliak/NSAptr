@@ -1,5 +1,8 @@
-# Our own runtime/config files
+# Our own dev/runtime/config files
 nsaptr.conf
+.idea/misc.xml
+.idea/modules.xml
+.idea/nsaptr.iml
 
 ### https://github.com/github/gitignore/blob/master/Global/JetBrains.gitignore
 

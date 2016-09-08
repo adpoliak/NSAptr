@@ -15,11 +15,14 @@ Copyright 2016 adpoliak
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+# from argparse import ArgumentParser
 from base64 import b64decode, b64encode
+from configparser import ConfigParser
 from distutils.version import LooseVersion
 from hashlib import sha1
 from http.cookiejar import CookieJar
 from io import BytesIO
+from os.path import expanduser
 from platform import system
 from pyxb.binding import generate
 from textwrap import fill
@@ -36,10 +39,12 @@ import typing
 
 class LicenseDialog(tk.Toplevel):
     def accept_callback(self, event=None):
+        _ = event
         self.return_code = 'accept'
         self.destroy()
 
     def cancel_callback(self, event=None):
+        _ = event
         self.return_code = 'cancel'
         self.destroy()
 
@@ -68,14 +73,14 @@ class LicenseDialog(tk.Toplevel):
         self._license_text.insert(tk.INSERT, license_body)
         self._license_text.config(state=tk.DISABLED)
         self._initial_focus = self._license_text
-        self._license_vscroll = tk.ttk.Scrollbar(self, command=self._license_text.yview, orient=tk.VERTICAL)
-        self._license_vscroll.grid(column=4, row=0, rowspan=2, padx=1, pady=1, ipadx=1, ipady=1,
-                                   sticky=tk.N+tk.E+tk.W+tk.S)
-        self._license_text.config(yscrollcommand=self._license_vscroll.set)
-        self._license_hscroll = tk.ttk.Scrollbar(self, command=self._license_text.xview, orient=tk.HORIZONTAL)
-        self._license_hscroll.grid(column=0, row=1, columnspan=4, padx=1, pady=1, ipadx=1, ipady=1,
-                                   sticky=tk.N+tk.E+tk.W+tk.S)
-        self._license_text.config(xscrollcommand=self._license_hscroll.set)
+        self._license_vertical_scroll = tk.ttk.Scrollbar(self, command=self._license_text.yview, orient=tk.VERTICAL)
+        self._license_vertical_scroll.grid(column=4, row=0, rowspan=2, padx=1, pady=1, ipadx=1, ipady=1,
+                                           sticky=tk.N+tk.E+tk.W+tk.S)
+        self._license_text.config(yscrollcommand=self._license_vertical_scroll.set)
+        self._license_horizontal_scroll = tk.ttk.Scrollbar(self, command=self._license_text.xview, orient=tk.HORIZONTAL)
+        self._license_horizontal_scroll.grid(column=0, row=1, columnspan=4, padx=1, pady=1, ipadx=1, ipady=1,
+                                             sticky=tk.N+tk.E+tk.W+tk.S)
+        self._license_text.config(xscrollcommand=self._license_horizontal_scroll.set)
         self._accept_button = tk.ttk.Button(self, command=self.accept_callback, takefocus=True,
                                             text='I Accept this License Agreement', underline=2)
         self._accept_button.grid(column=0, row=2, columnspan=2, padx=1, pady=1, ipadx=1, ipady=1,
@@ -192,6 +197,29 @@ def reset_request(request_obj: request.Request,
     request_obj.fragment = result.fragment
     request_obj.origin_req_host = request_obj.host
     request_obj.unredirected_hdrs = dict()
+
+config_defaults = {
+    'config': {
+        'accepted_license_sha1': None,
+        'no_upgrade_prompt': None,
+    },
+    'last_run': {
+        'extraction_base_dir': '.',
+        'version': None,
+    },
+}
+config = ConfigParser(allow_no_value=True, strict=True, empty_lines_in_values=False)
+config.read_dict(config_defaults)
+config.read([
+    './nsaptr.conf',
+    '/etc/nsaptr.conf', '/etc/nsaptr/nsaptr.conf',
+    '/usr/local/etc/nsaptr.conf', '/usr/local/etc/nsaptr/nsaptr.conf',
+    '/opt/local/etc/nsaptr.conf', '/opt/local/etc/nsaptr/nsaptr.conf',
+    '/usr/local/nsaptr/etc/nsaptr.conf', '/usr/local/nsaptr/nsaptr.conf',
+    '/opt/local/nsaptr/etc/nsaptr.conf', '/opt/local/nsaptr/nsaptr.conf',
+    expanduser('~/nsaptr.conf'), expanduser('~/nsaptr/nsaptr.conf'),
+    expanduser('~/.nsaptr.conf'), expanduser('~/.nsaptr/nsaptr.conf'),
+])
 
 rdh = request.HTTPRedirectHandler()
 rdh.max_repeats = 999
@@ -345,32 +373,51 @@ elif len(archives) == 0:
 else:
     settings['SELECTED_VERSION'] = list(archives.keys())[0]
 
+config['last_run']['version'] = settings['SELECTED_VERSION']
+
 archive_data = archives[settings['SELECTED_VERSION']]
 
-has_window_manager = True
-license_accepted = True
+# noinspection PyBroadException
+try:
+    root = tk.Tk()
+    root.withdraw()
+    root.destroy()()
+    has_window_manager = True
+except:
+    has_window_manager = False
+
 for prod_license in [x for x in repository.license if x.id == archive_data['license']]:
-    license_accepted = False
-    if has_window_manager:
-        root = tk.Tk()
-        root.withdraw()
-        d = LicenseDialog(root, license_heading=('Android Platform Tools v{} for {} is distributed '
-                                                 'under the "{}" license:').format(settings['SELECTED_VERSION'],
-                                                                                   system(),
-                                                                                   archive_data['license']),
-                          license_body=prod_license.value())
-        license_accepted = d.return_code == 'accept'
-    else:
-        print(('Android Platform Tools v{} for {} is distributed '
-               'under the "{}" license:').format(settings['SELECTED_VERSION'],
-                                                 system(),
-                                                 archive_data['license']))
-        print('Please read the following license:')
-        print(fill(prod_license.value(), replace_whitespace=False, drop_whitespace=False, width=80))
-        license_accepted = input('Please type "I ACCEPT THIS LICENSE" to continue []:') == 'I ACCEPT THIS LICENSE'
+    license_text = prod_license.value()
+    sha1_checker = sha1()
+    sha1_checker.update(license_text.encode('utf-8'))
+    if sha1_checker.hexdigest() not in str(config['config']['accepted_license_sha1']):
+        if has_window_manager:
+            root = tk.Tk()
+            root.withdraw()
+            d = LicenseDialog(root, license_heading=('Android Platform Tools v{} for {} is distributed '
+                                                     'under the "{}" license:').format(settings['SELECTED_VERSION'],
+                                                                                       system(),
+                                                                                       archive_data['license']),
+                              license_body=license_text)
+            license_accepted = d.return_code == 'accept'
+            d.destroy()()
+            root.destroy()
+        else:
+            print(('Android Platform Tools v{} for {} is distributed '
+                   'under the "{}" license:').format(settings['SELECTED_VERSION'],
+                                                     system(),
+                                                     archive_data['license']))
+            print('Please read the following license:')
+            print(fill(license_text, replace_whitespace=False, drop_whitespace=False, width=80))
+            license_accepted = input('Please type "I ACCEPT THIS LICENSE" to continue []:') == 'I ACCEPT THIS LICENSE'
+        if not license_accepted:
+            raise PermissionError('License Not Accepted')
+        else:
+            if config['config']['accepted_license_sha1'] is None:
+                config['config']['accepted_license_sha1'] = sha1_checker.hexdigest()
+            else:
+                config['config']['accepted_license_sha1'] += ',' + sha1_checker.hexdigest()
     break
-if not license_accepted:
-    raise PermissionError('License Not Accepted')
 
 if not archive_data['url'].lower().startswith('http'):
     archive_data['url'] = settings['URL_GOOGLE_SDK_SITE'] + archive_data['url']
@@ -385,13 +432,19 @@ with opener.open(req) as conn:
     archive_fileobj = BytesIO(byte_stream)
 
 assert archive_data['url'].lower().endswith('.zip')
-extract_base_directory = askdirectory(title='Choose Output Base Directory', mustexist=True)
-assert extract_base_directory != ''
+if has_window_manager:
+    root = tk.Tk()
+    root.withdraw()
+    config['last_run']['extraction_base_dir'] = askdirectory(title='Choose Output Base Directory', mustexist=True,
+                                                             initialdir=config['last_run']['extraction_base_dir'])
+assert config['last_run']['extraction_base_dir'] != ''
 archive_obj = ZipFile(archive_fileobj)
-archive_obj.extractall(path=extract_base_directory)
+archive_obj.extractall(path=config['last_run']['extraction_base_dir'])
 # TODO: Replace line above with code that sets permissions on executables as they extract
 
-# TODO: save settings
+
+with open(expanduser('~/.nsaptr.conf'), 'w+') as fp:
+    config.write(fp)
 
 # FINAL CLEANUPS
 
