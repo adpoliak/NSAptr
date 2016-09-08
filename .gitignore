@@ -1,3 +1,6 @@
+# Our own runtime/config files
+nsaptr.conf
+
 ### https://github.com/github/gitignore/blob/master/Global/JetBrains.gitignore
 
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio and Webstorm
