@@ -22,7 +22,7 @@ from distutils.version import LooseVersion
 from hashlib import sha1
 from http.cookiejar import CookieJar
 from io import BytesIO
-from os.path import expanduser
+from os.path import expanduser, isdir
 from platform import system
 from pyxb.binding import generate
 from textwrap import fill
@@ -198,6 +198,15 @@ def reset_request(request_obj: request.Request,
     request_obj.origin_req_host = request_obj.host
     request_obj.unredirected_hdrs = dict()
 
+
+# noinspection PyBroadException
+try:
+    root = tk.Tk()
+    root.withdraw()
+    has_window_manager = True
+except:
+    has_window_manager = False
+
 config_defaults = {
     'config': {
         'accepted_license_sha1': None,
@@ -205,6 +214,7 @@ config_defaults = {
     },
     'last_run': {
         'extraction_base_dir': '.',
+        'license_id': None,
         'version': None,
     },
 }
@@ -220,6 +230,8 @@ config.read([
     expanduser('~/nsaptr.conf'), expanduser('~/nsaptr/nsaptr.conf'),
     expanduser('~/.nsaptr.conf'), expanduser('~/.nsaptr/nsaptr.conf'),
 ])
+if not isdir(config['last_run']['extraction_base_dir']):
+    config['last_run']['extraction_base_dir'] = '.'
 
 rdh = request.HTTPRedirectHandler()
 rdh.max_repeats = 999
@@ -244,32 +256,38 @@ with opener.open(req) as conn:
     raw_data = b64decode(byte_stream)
     sdk_repo_source_data = raw_data.decode('utf-8')
 
-rxstr = r''
-sf = r'static[ \t]+final[ \t]+'
-psf = r'^[ \t]*public[ \t]+' + sf
-psfs = psf + r'string[ \t]+'
-rsfs = r'^[ \t]*private[ \t]+' + sf + r'string[ \t]+'
-endl = r'[ \t]*$'
-nn1 = r'[ \t]+//\$NON-NLS-1\$' + endl
-# URL_GOOGLE_SDK_SITE Variable
-rxstr += psfs + r'URL_GOOGLE_SDK_SITE[ \t\r\n]*=[ \t\r\n]*[\'"](?P<URL_GOOGLE_SDK_SITE>.*?)[\'"];' + nn1 + r'|'
-# NS_LATEST_VERSION Variable
-rxstr += psf + r'int[ \t]+NS_LATEST_VERSION[ \t\r\n]*=[ \t\r\n]*(?P<NS_LATEST_VERSION>.*?);' + endl + r'|'
-# URL_FILENAME_PATTERN Variable
-rxstr += psfs + r'URL_FILENAME_PATTERN[ \t\r\n]*=[ \t\r\n]*[\'"](?P<URL_FILENAME_PATTERN>.*?)[\'"];' + nn1 + r'|'
-# NS_BASE Variable
-rxstr += rsfs + r'NS_BASE[ \t\r\n]*=[ \t\r\n]*[\'"](?P<NS_BASE>.*?)[\'"];' + nn1 + r'|'
-# NS_PATTERN Variable
-rxstr += psfs + r'NS_PATTERN[ \t\r\n]*=[ \t\r\n]*(?P<NS_PATTERN>.*?);' + nn1 + r'|'
-# NS_URI Variable
-rxstr += psfs + r'NS_URI[ \t\r\n]*=[ \t\r\n]*(?P<NS_URI>.*?);' + endl + r'|'
-# NODE_SDK_REPOSITORY Variable
-rxstr += psfs + r'NODE_SDK_REPOSITORY[ \t\r\n]*=[ \t\r\n]*[\'"](?P<NODE_SDK_REPOSITORY>.*?)[\'"];' + nn1 + r'|'
-# NODE_PLATFORM_TOOL Variable
-rxstr += psfs + r'NODE_PLATFORM_TOOL[ \t\r\n]*=[ \t\r\n]*[\'"](?P<NODE_PLATFORM_TOOL>.*?)[\'"];' + nn1 + r'|'
-# GETSCHEMAURI Variable
-rxstr += r'^[ \t]*(?P<GETSCHEMAURI>public[ \t]+static[ \t]+string[ \t]+getSchemaUri\([^)]*\)[ \t]*\{.*?\})[ \t\r\n]*$'
-rx = re.compile(rxstr, re.MULTILINE + re.IGNORECASE + re.VERBOSE + re.UNICODE + re.DOTALL)
+
+def make_rxstr() ->str:
+    rxstr = r''
+    sf = r'static[ \t]+final[ \t]+'
+    psf = r'^[ \t]*public[ \t]+' + sf
+    psfs = psf + r'string[ \t]+'
+    rsfs = r'^[ \t]*private[ \t]+' + sf + r'string[ \t]+'
+    endl = r'[ \t]*$'
+    nn1 = r'[ \t]+//\$NON-NLS-1\$' + endl
+    # URL_GOOGLE_SDK_SITE Variable
+    rxstr += psfs + r'URL_GOOGLE_SDK_SITE[ \t\r\n]*=[ \t\r\n]*[\'"](?P<URL_GOOGLE_SDK_SITE>.*?)[\'"];' + nn1 + r'|'
+    # NS_LATEST_VERSION Variable
+    rxstr += psf + r'int[ \t]+NS_LATEST_VERSION[ \t\r\n]*=[ \t\r\n]*(?P<NS_LATEST_VERSION>.*?);' + endl + r'|'
+    # URL_FILENAME_PATTERN Variable
+    rxstr += psfs + r'URL_FILENAME_PATTERN[ \t\r\n]*=[ \t\r\n]*[\'"](?P<URL_FILENAME_PATTERN>.*?)[\'"];' + nn1 + r'|'
+    # NS_BASE Variable
+    rxstr += rsfs + r'NS_BASE[ \t\r\n]*=[ \t\r\n]*[\'"](?P<NS_BASE>.*?)[\'"];' + nn1 + r'|'
+    # NS_PATTERN Variable
+    rxstr += psfs + r'NS_PATTERN[ \t\r\n]*=[ \t\r\n]*(?P<NS_PATTERN>.*?);' + nn1 + r'|'
+    # NS_URI Variable
+    rxstr += psfs + r'NS_URI[ \t\r\n]*=[ \t\r\n]*(?P<NS_URI>.*?);' + endl + r'|'
+    # NODE_SDK_REPOSITORY Variable
+    rxstr += psfs + r'NODE_SDK_REPOSITORY[ \t\r\n]*=[ \t\r\n]*[\'"](?P<NODE_SDK_REPOSITORY>.*?)[\'"];' + nn1 + r'|'
+    # NODE_PLATFORM_TOOL Variable
+    rxstr += psfs + r'NODE_PLATFORM_TOOL[ \t\r\n]*=[ \t\r\n]*[\'"](?P<NODE_PLATFORM_TOOL>.*?)[\'"];' + nn1 + r'|'
+    # GETSCHEMAURI Variable
+    rxstr += r'^[ \t]*(?P<GETSCHEMAURI>public[ \t]+static[ \t]+string[ \t]+getSchemaUri\([^)]*\)[ \t]*\{.*?\})[ \t\r\n]'
+    rxstr += r'*$'
+    return rxstr
+
+rx_string = make_rxstr()
+rx = re.compile(rx_string, re.MULTILINE + re.IGNORECASE + re.VERBOSE + re.UNICODE + re.DOTALL)
 
 settings = dict()
 for match in rx.finditer(sdk_repo_source_data):
@@ -362,6 +380,17 @@ for candidate in getattr(repository, settings['NODE_PLATFORM_TOOL'].replace('-',
             }
             break
 
+if config['last_run']['version'] is not None:
+    archives[LooseVersion(config['last_run']['version']+':INSTALLED').vstring] = {
+        'size': None,
+        'checksum': {
+            'type': None,
+            'value': None,
+        },
+        'url': config['last_run']['extraction_base_dir'],
+        'license': config['last_run']['license_id'],
+    }
+
 print('Found Installation Candidates:')
 print("\n".join(sorted(archives.keys(), key=LooseVersion)))
 
@@ -373,18 +402,12 @@ elif len(archives) == 0:
 else:
     settings['SELECTED_VERSION'] = list(archives.keys())[0]
 
+if settings['SELECTED_VERSION'].endswith(':INSTALLED'):
+    exit(0)
+
 config['last_run']['version'] = settings['SELECTED_VERSION']
 
 archive_data = archives[settings['SELECTED_VERSION']]
-
-# noinspection PyBroadException
-try:
-    root = tk.Tk()
-    root.withdraw()
-    root.destroy()()
-    has_window_manager = True
-except:
-    has_window_manager = False
 
 for prod_license in [x for x in repository.license if x.id == archive_data['license']]:
     license_text = prod_license.value()
@@ -392,8 +415,7 @@ for prod_license in [x for x in repository.license if x.id == archive_data['lice
     sha1_checker.update(license_text.encode('utf-8'))
     if sha1_checker.hexdigest() not in str(config['config']['accepted_license_sha1']):
         if has_window_manager:
-            root = tk.Tk()
-            root.withdraw()
+            # noinspection PyUnboundLocalVariable
             d = LicenseDialog(root, license_heading=('Android Platform Tools v{} for {} is distributed '
                                                      'under the "{}" license:').format(settings['SELECTED_VERSION'],
                                                                                        system(),
@@ -401,7 +423,6 @@ for prod_license in [x for x in repository.license if x.id == archive_data['lice
                               license_body=license_text)
             license_accepted = d.return_code == 'accept'
             d.destroy()()
-            root.destroy()
         else:
             print(('Android Platform Tools v{} for {} is distributed '
                    'under the "{}" license:').format(settings['SELECTED_VERSION'],
@@ -413,6 +434,7 @@ for prod_license in [x for x in repository.license if x.id == archive_data['lice
         if not license_accepted:
             raise PermissionError('License Not Accepted')
         else:
+            config['last_run']['license_id'] = archive_data['license']
             if config['config']['accepted_license_sha1'] is None:
                 config['config']['accepted_license_sha1'] = sha1_checker.hexdigest()
             else:
@@ -433,8 +455,6 @@ with opener.open(req) as conn:
 
 assert archive_data['url'].lower().endswith('.zip')
 if has_window_manager:
-    root = tk.Tk()
-    root.withdraw()
     config['last_run']['extraction_base_dir'] = askdirectory(title='Choose Output Base Directory', mustexist=True,
                                                              initialdir=config['last_run']['extraction_base_dir'])
 assert config['last_run']['extraction_base_dir'] != ''
