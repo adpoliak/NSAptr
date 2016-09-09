@@ -16,6 +16,7 @@ Copyright 2016 adpoliak
    limitations under the License.
 """
 # from argparse import ArgumentParser
+from util.javafmtstr import pythonify_java_format_string, java_format_string_regex
 from base64 import b64decode, b64encode
 from configparser import ConfigParser
 from distutils.version import LooseVersion
@@ -33,151 +34,13 @@ from zipfile import ZipFile
 import logging
 import re
 import tkinter as tk
-import tkinter.ttk
 import typing
-
-
-class LicenseDialog(tk.Toplevel):
-    def accept_callback(self, event=None):
-        _ = event
-        self.return_code = 'accept'
-        self.destroy()
-
-    def cancel_callback(self, event=None):
-        _ = event
-        self.return_code = 'cancel'
-        self.destroy()
-
-    def __init__(self, master, license_heading, license_body, *args, **kwargs):
-        tk.Toplevel.__init__(self, master, *args, **kwargs)
-        self.minsize(640, 480)
-        self.columnconfigure(0, weight=1)
-        self.columnconfigure(1, weight=1)
-        self.columnconfigure(2, weight=1)
-        self.columnconfigure(3, weight=1)
-        self.columnconfigure(4, weight=0)
-        self.rowconfigure(0, weight=1)
-        self.rowconfigure(1, weight=0)
-        self.rowconfigure(2, weight=0)
-        self.transient(master)
-        self.master = master
-        self.protocol('WM_DELETE_WINDOW', self.cancel_callback)
-        self.bind("<Escape>", self.cancel_callback)
-        self.title('License Agreement')
-        self.return_code = None
-        self.grid()
-        self._license_text = tk.Text(self, padx=1, pady=1, state=tk.NORMAL, takefocus=True, wrap=tk.WORD)
-        self._license_text.grid(column=0, row=0, columnspan=4, padx=1, pady=1, ipadx=1, ipady=1,
-                                sticky=tk.N+tk.E+tk.W+tk.S)
-        self._license_text.insert(tk.INSERT, license_heading + "\n\n")
-        self._license_text.insert(tk.INSERT, license_body)
-        self._license_text.config(state=tk.DISABLED)
-        self._initial_focus = self._license_text
-        self._license_vertical_scroll = tk.ttk.Scrollbar(self, command=self._license_text.yview, orient=tk.VERTICAL)
-        self._license_vertical_scroll.grid(column=4, row=0, rowspan=2, padx=1, pady=1, ipadx=1, ipady=1,
-                                           sticky=tk.N+tk.E+tk.W+tk.S)
-        self._license_text.config(yscrollcommand=self._license_vertical_scroll.set)
-        self._license_horizontal_scroll = tk.ttk.Scrollbar(self, command=self._license_text.xview, orient=tk.HORIZONTAL)
-        self._license_horizontal_scroll.grid(column=0, row=1, columnspan=4, padx=1, pady=1, ipadx=1, ipady=1,
-                                             sticky=tk.N+tk.E+tk.W+tk.S)
-        self._license_text.config(xscrollcommand=self._license_horizontal_scroll.set)
-        self._accept_button = tk.ttk.Button(self, command=self.accept_callback, takefocus=True,
-                                            text='I Accept this License Agreement', underline=2)
-        self._accept_button.grid(column=0, row=2, columnspan=2, padx=1, pady=1, ipadx=1, ipady=1,
-                                 sticky=tk.N+tk.E+tk.W+tk.S)
-        self._cancel_button = tk.ttk.Button(self, command=self.cancel_callback, takefocus=True,
-                                            default=tk.ACTIVE, text='I DON\'T Accept this License Agreement',
-                                            underline=2)
-        self._cancel_button.grid(column=2, row=2, columnspan=2, padx=1, pady=1, ipadx=1, ipady=1,
-                                 sticky=tk.N+tk.E+tk.W+tk.S)
-        self.grab_set()
-        if not self._initial_focus:
-            self._initial_focus = self
-        self._initial_focus.focus_set()
-        self.wait_window(self)
-
-
-def pythonify_java_format_string(match_obj: typing.re.Match) -> str:
-    """
-    :rtype: str
-    :param match_obj: match object generated as part of call to re.sub()
-    :return: Java format string converted to python '{}'.format() syntax
-    Adapted from https://docs.python.org/3.1/library/string.html#format-string-syntax
-    """
-    fd = {'arg_integer': '', 'conversion': '', 'fs': {'fill': '', 'align': '', 'sign': '', 'type_prefix': '',
-                                                      'zero_pad': '', 'width': '', 'comma_sep': '', 'precision': '',
-                                                      'type': '',
-                                                      }}
-
-    captured = match_obj.groupdict()
-
-    index = captured.get('index', None)
-    if index is not None:
-        # Java Format String Indexes are Base 1
-        # Python's are Base 0
-        # So we have to deal with it...
-        fd['arg_integer'] = str(int(index[:-1]) - 1)
-
-    flags = captured.get('flags', None)
-    if flags is not None:
-        # Lack of alignment flag in Java means to do right-alignment
-        fd['fs']['align'] = '<' if '-' in flags else '>'
-        if '+' in flags:
-            fd['fs']['sign'] = '+'
-        elif ' ' in flags:
-            fd['fs']['sign'] = ' '
-        else:
-            # Java doesn't do distinction between default left- and right-aligned fields, so we force Java's default
-            fd['fs']['sign'] = '-'
-        if '#' in flags:
-            fd['fs']['type_prefix'] = '#'
-        if '0' in flags:
-            fd['fs']['fill'] = '0'
-            fd['fs']['align'] = '='
-        if ',' in flags:
-            fd['fs']['comma_sep'] = ','
-        if '(' in flags:
-            raise NotImplementedError('"(" Formatting flag not natively supported in Python.')
-
-    width = captured.get('width', None)
-    if width is not None:
-        # Zero padding was taken care of in flags, make sure it is stripped out here
-        fd['fs']['width'] = str(int(width))
-
-    precision = captured.get('precision', None)
-    if precision is not None:
-        fd['fs']['precision'] = precision
-
-    conversion = captured.get('conversion', None)
-    if conversion is not None:
-        if conversion in list('sScCdoXxeEfgG'):
-            fd['fs']['type'] = conversion
-        else:
-            raise NotImplementedError('"{}" Conversion not natively supported in Python.'.format(conversion))
-
-    ret = (
-        '{' +
-        fd['arg_integer'] +
-        fd['conversion'] +
-        ':' +
-        fd['fs']['fill'] +
-        fd['fs']['align'] +
-        fd['fs']['sign'] +
-        fd['fs']['type_prefix'] +
-        fd['fs']['zero_pad'] +
-        fd['fs']['width'] +
-        fd['fs']['comma_sep'] +
-        fd['fs']['precision'] +
-        fd['fs']['type'] +
-        '}'
-    )
-    return ret
 
 
 def reset_request(request_obj: request.Request,
                   new_uri: str,
-                  new_method: str=None,
-                  new_data: typing.Optional[typing.ByteString]=b'`^NO CHANGE^`') -> None:
+                  new_method: str = None,
+                  new_data: typing.Optional[typing.ByteString] = b'`^NO CHANGE^`') -> None:
     """
     Resets a urllib.request.Request instance URI
     Default value of new_data chosen because it contains characters that are not allowed per RFC 3986
@@ -203,14 +66,19 @@ def reset_request(request_obj: request.Request,
 try:
     root = tk.Tk()
     root.withdraw()
-    has_window_manager = True
 except:
     has_window_manager = False
+else:
+    has_window_manager = True
+    from ui.tkinter.versionchooser import VersionChoiceDialog
+    from ui.tkinter.licensedialog import LicenseDialog
 
 config_defaults = {
     'config': {
         'accepted_license_sha1': None,
-        'no_upgrade_prompt': None,
+        'persist_choices': False,
+        'keep_while_available': False,
+        'do_not_ask_again': False,
     },
     'last_run': {
         'extraction_base_dir': '.',
@@ -257,7 +125,7 @@ with opener.open(req) as conn:
     sdk_repo_source_data = raw_data.decode('utf-8')
 
 
-def make_rxstr() ->str:
+def make_rxstr() -> str:
     rxstr = r''
     sf = r'static[ \t]+final[ \t]+'
     psf = r'^[ \t]*public[ \t]+' + sf
@@ -286,6 +154,7 @@ def make_rxstr() ->str:
     rxstr += r'*$'
     return rxstr
 
+
 rx_string = make_rxstr()
 rx = re.compile(rx_string, re.MULTILINE + re.IGNORECASE + re.VERBOSE + re.UNICODE + re.DOTALL)
 
@@ -303,19 +172,9 @@ if b64encode(settings['GETSCHEMAURI'].encode('utf-8')) == (b'cHVibGljIHN0YXRpYyB
     if b64encode(settings['NS_URI'].encode('utf-8')) == b'Z2V0U2NoZW1hVXJpKE5TX0xBVEVTVF9WRVJTSU9OKQ==':
         settings['XMLNS'] = settings['NS_BASE'] + settings['NS_LATEST_VERSION']
 
-# definition of Java Format String from https://docs.oracle.com/javase/7/docs/api/java/util/Formatter.html
-jf = re.compile(
-    r'%'
-    r'(?P<index>[0-9]+\$)?'
-    r'(?P<flags>[-#+ 0,(]+)?'
-    r'(?P<width>[0-9]+)?'
-    r'(?P<precision>\.[0-9]+)?'
-    r'(?P<conversion>[bBhHsScCdoxXeEfgGaA%n]|[tT][HIklMSLNpzZsQBbhAaCYyjmdeRTrDFc)])',
-    re.MULTILINE + re.VERBOSE + re.UNICODE + re.DOTALL
-)
 
-settings['URL_FILENAME_PATTERN'], num_replacements = jf.subn(pythonify_java_format_string,
-                                                             settings['URL_FILENAME_PATTERN'])
+settings['URL_FILENAME_PATTERN'], num_replacements = java_format_string_regex.subn(pythonify_java_format_string,
+                                                                                   settings['URL_FILENAME_PATTERN'])
 
 settings['REPO_URL'] = '{}{}'.format(
     settings['URL_GOOGLE_SDK_SITE'],
@@ -380,7 +239,7 @@ for candidate in getattr(repository, settings['NODE_PLATFORM_TOOL'].replace('-',
             break
 
 if config['last_run']['version'] is not None:
-    archives[LooseVersion(config['last_run']['version']+':INSTALLED').vstring] = {
+    archives[config['last_run']['version'] + ':KEEP'] = {
         'size': None,
         'checksum': {
             'type': None,
@@ -390,24 +249,53 @@ if config['last_run']['version'] is not None:
         'license': config['last_run']['license_id'],
     }
 
-print('Found Installation Candidates:')
-print("\n".join(sorted(archives.keys(), key=LooseVersion)))
-
-if len(archives) > 1:
-    # TODO: prompt user for which version to deploy
-    raise NotImplementedError('Version Selection Not Implemented')
-elif len(archives) == 0:
-    raise FileNotFoundError('No Available Versions')
+if len(archives) >= 1:
+    available_versions = sorted([LooseVersion(x) for x in archives.keys()])
+    can_reinstall = config['last_run']['version'] in archives.keys()
+    if not config['config'].getboolean('do_not_ask_again'):
+        if not has_window_manager:
+            print('Found Installation Candidates:')
+            print("\n".join(sorted(available_versions)))
+            raise NotImplementedError('Text-Mode Version Selection Not Implemented')
+        else:
+            if can_reinstall:
+                last_version_text = config['last_run']['version']
+                if config['config'].getboolean('keep_while_available'):
+                    last_version_text += ':KEEP'
+            else:
+                last_version_text = None
+            # noinspection PyUnboundLocalVariable
+            version_chooser = VersionChoiceDialog(root,
+                                                  available_versions,
+                                                  persist=config['config'].getboolean('persist_choices'),
+                                                  keep=config['config'].getboolean('keep_while_available'),
+                                                  last_used=last_version_text)
+            if version_chooser.return_code == 'accept':
+                settings['SELECTED_VERSION'] = version_chooser.chosen_version
+                settings['KEEP_WHILE_AVAILABLE'] = version_chooser.keep_while_available
+                if version_chooser.persist:
+                    config['config']['persist_choices'] = str(version_chooser.persist)
+                    config['config']['keep_while_available'] = str(settings['KEEP_WHILE_AVAILABLE'])
+                    config['config']['do_not_ask_again'] = str(version_chooser.do_not_ask_again)
+            else:
+                raise ValueError('User cancelled selection dialog')
+    else:
+        settings['KEEP_WHILE_AVAILABLE'] = config['config'].getboolean('keep_while_available')
+        if settings['KEEP_WHILE_AVAILABLE'] and can_reinstall:
+            settings['SELECTED_VERSION'] = config['last_run']['version'] + ':KEEP'
+        else:
+            settings['SELECTED_VERSION'] = available_versions[0].vstring
 else:
-    settings['SELECTED_VERSION'] = list(archives.keys())[0]
+    raise FileNotFoundError('No Available Versions')
 
-if settings['SELECTED_VERSION'].endswith(':INSTALLED'):
+if settings['SELECTED_VERSION'].endswith(':KEEP'):
     exit(0)
 
 config['last_run']['version'] = settings['SELECTED_VERSION']
 
 archive_data = archives[settings['SELECTED_VERSION']]
 
+# TODO: refactor to skip IFF config['config'].getboolean('do_not_ask_again') and license has been accepted already
 for prod_license in [x for x in repository.license if x.id == archive_data['license']]:
     license_text = prod_license.value()
     sha1_checker = sha1()
@@ -421,7 +309,6 @@ for prod_license in [x for x in repository.license if x.id == archive_data['lice
                                                                                        archive_data['license']),
                               license_body=license_text)
             license_accepted = d.return_code == 'accept'
-            d.destroy()()
         else:
             print(('Android Platform Tools v{} for {} is distributed '
                    'under the "{}" license:').format(settings['SELECTED_VERSION'],
@@ -454,6 +341,7 @@ with opener.open(req) as conn:
 
 assert archive_data['url'].lower().endswith('.zip')
 if has_window_manager:
+    # TODO: obey config['config'].getboolean('do_not_ask_again') for extraction directory as well
     config['last_run']['extraction_base_dir'] = askdirectory(title='Choose Output Base Directory', mustexist=True,
                                                              initialdir=config['last_run']['extraction_base_dir'])
 assert config['last_run']['extraction_base_dir'] != ''
@@ -461,9 +349,9 @@ archive_obj = ZipFile(archive_fileobj)
 archive_obj.extractall(path=config['last_run']['extraction_base_dir'])
 # TODO: Replace line above with code that sets permissions on executables as they extract
 
-
-with open(expanduser('~/.nsaptr.conf'), 'w+') as fp:
-    config.write(fp)
+if config['config']['persist_choices']:
+    with open(expanduser('~/.nsaptr.conf'), 'w+') as fp:
+        config.write(fp)
 
 # FINAL CLEANUPS
 
