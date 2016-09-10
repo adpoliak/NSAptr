@@ -94,6 +94,7 @@ def pythonify_java_format_string(match_obj: typing.re.Match) -> str:
     )
     return ret
 
+
 # definition of Java Format String from https://docs.oracle.com/javase/7/docs/api/java/util/Formatter.html
 java_format_string_regex = re.compile(
     r'%'

@@ -85,8 +85,8 @@ class VersionChoiceDialog(tk.Toplevel):
             self._persist_changes.config(state=tk.NORMAL)
         self.update_idletasks()
 
-    def __init__(self, master, versions: typing.List[LooseVersion], persist: typing.Optional[bool]=False,
-                 keep: typing.Optional[bool]=False, last_used: typing.Optional[str]=None, *args, **kwargs):
+    def __init__(self, master, versions: typing.List[LooseVersion], persist: typing.Optional[bool] = False,
+                 keep: typing.Optional[bool] = False, last_used: typing.Optional[str] = None, *args, **kwargs):
         tk.Toplevel.__init__(self, master, *args, **kwargs)
         self.grid()
         for col in range(2):

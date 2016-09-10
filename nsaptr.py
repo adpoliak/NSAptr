@@ -16,8 +16,9 @@ Copyright 2016 adpoliak
    limitations under the License.
 """
 # from argparse import ArgumentParser
-from util.javafmtstr import pythonify_java_format_string, java_format_string_regex
-from util.requests import make_request, reset_request
+import logging
+import re
+import tkinter as tk
 from base64 import b64decode, b64encode
 from configparser import ConfigParser
 from distutils.version import LooseVersion
@@ -25,15 +26,14 @@ from hashlib import sha1
 from io import BytesIO
 from os.path import expanduser, isdir
 from platform import system
-from pyxb.binding import generate
 from textwrap import fill
 from tkinter.filedialog import askdirectory
 from types import ModuleType
 from zipfile import ZipFile
-import logging
-import re
-import tkinter as tk
 
+from pyxb.binding import generate
+from util.javafmtstr import pythonify_java_format_string, java_format_string_regex
+from util.requests import make_request, reset_request
 
 # noinspection PyBroadException
 try:
@@ -132,7 +132,6 @@ if b64encode(settings['GETSCHEMAURI'].encode('utf-8')) == (b'cHVibGljIHN0YXRpYyB
                                                            b'AgfQ=='):
     if b64encode(settings['NS_URI'].encode('utf-8')) == b'Z2V0U2NoZW1hVXJpKE5TX0xBVEVTVF9WRVJTSU9OKQ==':
         settings['XMLNS'] = settings['NS_BASE'] + settings['NS_LATEST_VERSION']
-
 
 settings['URL_FILENAME_PATTERN'], num_replacements = java_format_string_regex.subn(pythonify_java_format_string,
                                                                                    settings['URL_FILENAME_PATTERN'])
