@@ -18,7 +18,6 @@ Copyright 2016 adpoliak
 # from argparse import ArgumentParser
 import logging
 import re
-import tkinter as tk
 from base64 import b64decode, b64encode
 from configparser import ConfigParser
 from distutils.version import LooseVersion
@@ -26,8 +25,6 @@ from hashlib import sha1
 from io import BytesIO
 from os.path import expanduser, isdir
 from platform import system
-from textwrap import fill
-from tkinter.filedialog import askdirectory
 from types import ModuleType
 from zipfile import ZipFile
 
@@ -37,12 +34,15 @@ from util.requests import make_request, reset_request
 
 # noinspection PyBroadException
 try:
+    import tkinter as tk
     root = tk.Tk()
     root.withdraw()
 except:
     has_window_manager = False
+    from textwrap import fill
 else:
     has_window_manager = True
+    from tkinter.filedialog import askdirectory
     from ui.tkinter.versionchooser import VersionChoiceDialog
     from ui.tkinter.licensedialog import LicenseDialog
 
@@ -198,7 +198,9 @@ for candidate in getattr(repository, settings['NODE_PLATFORM_TOOL'].replace('-',
             }
             break
 
-if config['last_run']['version'] is not None:
+if config['last_run']['version'] is not None and \
+                config['last_run']['extraction_base_dir'] is not None and \
+        isdir(config['last_run']['extraction_base_dir']):
     archives[config['last_run']['version'] + ':KEEP'] = {
         'size': None,
         'checksum': {
@@ -304,6 +306,9 @@ if has_window_manager:
     # TODO: obey config['config'].getboolean('do_not_ask_again') for extraction directory as well
     config['last_run']['extraction_base_dir'] = askdirectory(title='Choose Output Base Directory', mustexist=True,
                                                              initialdir=config['last_run']['extraction_base_dir'])
+else:
+    raise NotImplementedError('Text-Mode Directory Choosing Not Implemented yet!')
+
 assert config['last_run']['extraction_base_dir'] != ''
 archive_obj = ZipFile(archive_fileobj)
 archive_obj.extractall(path=config['last_run']['extraction_base_dir'])
