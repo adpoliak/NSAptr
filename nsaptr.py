@@ -17,11 +17,11 @@ Copyright 2016 adpoliak
 """
 # from argparse import ArgumentParser
 from util.javafmtstr import pythonify_java_format_string, java_format_string_regex
+from util.requests import make_request, reset_request
 from base64 import b64decode, b64encode
 from configparser import ConfigParser
 from distutils.version import LooseVersion
 from hashlib import sha1
-from http.cookiejar import CookieJar
 from io import BytesIO
 from os.path import expanduser, isdir
 from platform import system
@@ -29,37 +29,10 @@ from pyxb.binding import generate
 from textwrap import fill
 from tkinter.filedialog import askdirectory
 from types import ModuleType
-from urllib import request, parse
 from zipfile import ZipFile
 import logging
 import re
 import tkinter as tk
-import typing
-
-
-def reset_request(request_obj: request.Request,
-                  new_uri: str,
-                  new_method: str = None,
-                  new_data: typing.Optional[typing.ByteString] = b'`^NO CHANGE^`') -> None:
-    """
-    Resets a urllib.request.Request instance URI
-    Default value of new_data chosen because it contains characters that are not allowed per RFC 3986
-    :param request_obj: urllib.request.Request - The object being reset
-    :param new_uri: str - String containing the new URI
-    :param new_method: str - String containing the new request method
-    :param new_data: byte string - data to be sent alongside the request
-    :rtype: None
-    """
-    if new_method is not None:
-        request_obj.method = new_method
-    if new_data != b'`^NO CHANGE^`':
-        request_obj.data = new_data
-    request_obj.full_url = new_uri
-    result = parse.urlparse(new_uri, allow_fragments=True)
-    request_obj.host = result.netloc
-    request_obj.fragment = result.fragment
-    request_obj.origin_req_host = request_obj.host
-    request_obj.unredirected_hdrs = dict()
 
 
 # noinspection PyBroadException
@@ -101,19 +74,7 @@ config.read([
 if not isdir(config['last_run']['extraction_base_dir']):
     config['last_run']['extraction_base_dir'] = '.'
 
-rdh = request.HTTPRedirectHandler()
-rdh.max_repeats = 999
-rdh.max_redirections = 999
-
-cj = CookieJar()
-cjh = request.HTTPCookieProcessor(cj)
-
-opener = request.build_opener(
-    rdh,
-    cjh
-)
-
-req = request.Request(
+opener, req = make_request(
     url='https://android.googlesource.com/platform/tools/base/+/master/sdklib/src/main/java/com/android/sdklib/'
         'repository/SdkRepoConstants.java?format=TEXT',
     method='GET',
