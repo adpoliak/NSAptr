@@ -29,7 +29,7 @@ from types import ModuleType
 from pyxb.binding import generate
 from util.javafmtstr import pythonify_java_format_string, java_format_string_regex
 from util.requests import make_request, reset_request
-from util.zipfile_extract_perms import ZipFile, PERMS_PRESERVE_SAFE
+from util.zipfile_extract_perms import ZipFileMod as ZipFile, PERMS_PRESERVE_SAFE
 
 # noinspection PyBroadException
 try:
