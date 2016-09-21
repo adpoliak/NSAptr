@@ -26,11 +26,10 @@ from io import BytesIO
 from os.path import expanduser, isdir
 from platform import system
 from types import ModuleType
-from zipfile import ZipFile
-
 from pyxb.binding import generate
 from util.javafmtstr import pythonify_java_format_string, java_format_string_regex
 from util.requests import make_request, reset_request
+from util.zipfile_extract_perms import ZipFile, PERMS_PRESERVE_SAFE
 
 # noinspection PyBroadException
 try:
@@ -311,8 +310,7 @@ else:
 
 assert config['last_run']['extraction_base_dir'] != ''
 archive_obj = ZipFile(archive_fileobj)
-archive_obj.extractall(path=config['last_run']['extraction_base_dir'])
-# TODO: Replace line above with code that sets permissions on executables as they extract
+archive_obj.extractall(path=config['last_run']['extraction_base_dir'], preserve_permissions=PERMS_PRESERVE_SAFE)
 
 if config['config']['persist_choices']:
     with open(expanduser('~/.nsaptr.conf'), 'w+') as fp:
