@@ -39,6 +39,7 @@ try:
 except:
     has_window_manager = False
     from textwrap import fill
+    from ui.curses.askdirectory import askdirectory
 else:
     has_window_manager = True
     from tkinter.filedialog import askdirectory
@@ -301,12 +302,9 @@ with opener.open(req) as conn:
     archive_fileobj = BytesIO(byte_stream)
 
 assert archive_data['url'].lower().endswith('.zip')
-if has_window_manager:
-    # TODO: obey config['config'].getboolean('do_not_ask_again') for extraction directory as well
-    config['last_run']['extraction_base_dir'] = askdirectory(title='Choose Output Base Directory', mustexist=True,
-                                                             initialdir=config['last_run']['extraction_base_dir'])
-else:
-    raise NotImplementedError('Text-Mode Directory Choosing Not Implemented yet!')
+# TODO: obey config['config'].getboolean('do_not_ask_again') for extraction directory as well
+config['last_run']['extraction_base_dir'] = askdirectory(title='Choose Output Base Directory', mustexist=True,
+                                                         initialdir=config['last_run']['extraction_base_dir'])
 
 assert config['last_run']['extraction_base_dir'] != ''
 archive_obj = ZipFile(archive_fileobj)
