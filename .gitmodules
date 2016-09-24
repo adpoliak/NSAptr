@@ -1,3 +1,6 @@
 [submodule "dependencies/pyxb"]
 	path = dependencies/pyxb
 	url = https://github.com/pabigot/pyxb.git
+[submodule "dependencies/sorted_containers"]
+	path = dependencies/sorted_containers
+	url = https://github.com/grantjenks/sorted_containers.git

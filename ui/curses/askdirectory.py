@@ -1,4 +1,18 @@
 """
+Copyright 2016 adpoliak
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
 Originally from https://gist.github.com/rygwdn/394885
 
 Yet another curses-based directory tree browser, in Python.
@@ -25,12 +39,10 @@ Originally by: Kragen Sitaker
 # in-order traversal, and defer operations on the current node until the next
 # time we're traversing.
 
-import cgitb
 import curses
 import os
 import sys
 
-cgitb.enable(format="text")
 ESC = 27
 
 
