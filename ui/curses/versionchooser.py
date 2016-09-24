@@ -14,9 +14,10 @@ Copyright 2016 adpoliak
    limitations under the License.
 """
 from distutils.version import LooseVersion
-import curses
-import os
-import sys
+from sortedcontainers.sortedset import SortedSet
+# import curses
+# import os
+# import sys
 import typing
 
 
@@ -92,7 +93,7 @@ class VersionChoiceDialog(object):
             self.do_not_ask_again ^= True
 
     def select_action(self):
-        self.chosen_version = list(self._child_names)[self._index]
+        self._chosen_version = list(self._child_names)[self._index]
         if self.chosen_version.endswith(':KEEP'):
             self._can_continue = False
             self.persist = None
@@ -111,7 +112,7 @@ class VersionChoiceDialog(object):
         if self._can_continue:
             self.return_code = 'accept'
 
-    def __init__(self, master: typing.Optional[object], versions: typing.Set[LooseVersion],
+    def __init__(self, master: typing.Optional[object], versions: SortedSet,
                  persist: typing.Optional[bool] = False, keep: typing.Optional[bool] = False,
                  last_used: typing.Optional[str] = None, *args, **kwargs):
 
@@ -120,7 +121,7 @@ class VersionChoiceDialog(object):
         _ = args
         _ = kwargs
         self._can_continue = None
-        self._child_names = set(versions)
+        self._child_names = SortedSet(versions)
         self._child_objects = None
         self._chosen_version = None
         self._do_not_ask_again = False
@@ -136,6 +137,6 @@ class VersionChoiceDialog(object):
             self.keep_action()
         if last_used is not None:
             last_used_version_object = LooseVersion(last_used)
-            self._index = list(self._child_names).index(last_used_version_object) \
+            self._index = self._child_names.index(last_used_version_object) \
                 if last_used_version_object in self._child_names else 0
             self.select_action()
